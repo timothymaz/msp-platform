@@ -34,7 +34,9 @@ oauth.register(
     authorize_url=f"https://{AUTH0_DOMAIN}/authorize",
     access_token_url=f"https://{AUTH0_DOMAIN}/oauth/token",
     client_kwargs={"scope": "openid profile email"},
+    redirect_uri="http://localhost:3000/auth/callback"  # Ensure this is correct
 )
+
 
 # ✅ Database Setup
 Base.metadata.create_all(bind=engine)
