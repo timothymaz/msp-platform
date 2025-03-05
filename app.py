@@ -32,8 +32,11 @@ async def login(request: Request):
 async def auth_callback(request: Request):
     token = await oauth.auth0.authorize_access_token(request)
     user = await oauth.auth0.parse_id_token(request, token)
-    
+
     if not user:
         raise HTTPException(status_code=400, detail="Authentication failed")
 
-    return {"user": user}
+    # Extract roles from Auth0
+    roles = user.get("https://dev-y21yym5fgf78ufvb.us.auth0.com/roles", [])  # Auth0 stores roles in custom claims
+
+    return {"user": user, "roles": roles}
