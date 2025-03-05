@@ -1,42 +1,46 @@
 "use client";
-import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useState } from "react";
-import axios from "axios";
+import { useRouter } from "next/navigation";
 
-export default function Dashboard() {
-  const { user, isAuthenticated, getAccessTokenSilently } = useAuth0();
-  const [data, setData] = useState(null);
+export default function DashboardPage() {
+  const [user, setUser] = useState(null);
+  const router = useRouter();
 
   useEffect(() => {
-    if (isAuthenticated) {
-      const fetchData = async () => {
-        try {
-          const token = await getAccessTokenSilently();
-          const response = await axios.get("http://54.166.194.14:8000/client-data", {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          setData(response.data);
-        } catch (error) {
-          console.error("Error fetching data", error);
-        }
-      };
-      fetchData();
-    }
-  }, [isAuthenticated, getAccessTokenSilently]);
+    // Get token from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get("code");
 
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      {isAuthenticated ? (
-        <div>
-          <p>Welcome, {user?.name}!</p>
-          <pre>{JSON.stringify(data, null, 2)}</pre>
-        </div>
-      ) : (
-        <p>Please log in.</p>
-      )}
-    </div>
-  );
+    if (code) {
+      // Exchange code for access token
+      fetch("http://localhost:8000/auth/callback")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.access_token) {
+            localStorage.setItem("auth_token", data.access_token);
+            setUser(data.user);
+          } else {
+            router.push("/login");
+          }
+        })
+        .catch(() => router.push("/login"));
+    } else {
+      // Try to get existing token
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        router.push("/login");
+      } else {
+        fetch("http://localhost:8000/auth/user", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+          .then((res) => res.json())
+          .then((data) => setUser(data.user))
+          .catch(() => router.push("/login"));
+      }
+    }
+  }, []);
+
+  if (!user) return <p>Loading...</p>;
+
+  return <h1>Welcome, {user.name}!</h1>;
 }

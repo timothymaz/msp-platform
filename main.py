@@ -73,12 +73,13 @@ async def login(request: Request):
 async def auth_callback(request: Request):
     """Handles Auth0 callback and extracts user information."""
     token = await oauth.auth0.authorize_access_token(request)
-    user = await oauth.auth0.parse_id_token(request, token)
+    user = token.get("userinfo")  # <-- Ensure user info is extracted
 
     if not user:
         raise HTTPException(status_code=400, detail="Authentication failed")
 
-    return {"user": user}
+    # Return both the user info and access token
+    return {"user": user, "access_token": token["access_token"]}
 
 # ✅ API Endpoints
 
