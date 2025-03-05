@@ -10,4 +10,4 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-Base = DeclarativeBase()
+Base = declarative_base()  # ✅ Fix: Use declarative_base() instead of DeclarativeBase()
