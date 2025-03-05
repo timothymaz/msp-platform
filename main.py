@@ -1,27 +1,31 @@
 from fastapi import FastAPI, Depends, HTTPException
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from authlib.integrations.starlette_client import OAuth
 from sqlalchemy.orm import Session
 import os
 from dotenv import load_dotenv
-
 from database import SessionLocal, Base, engine
 from models import Client
-from rbac import check_role
+from pydantic import BaseModel
+from typing import List
 
+# Load environment variables
 load_dotenv()
 
-# Initialize FastAPI app
-app = FastAPI(title="MSP vCIO Platform API")
+# Initialize FastAPI
+app = FastAPI()
 
-# Load Auth0 credentials from environment variables
+# ✅ Add SessionMiddleware (Required for Auth0)
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SESSION_SECRET", "supersecretkey"))
+
+# ✅ Auth0 Configuration
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET")
 AUTH0_CALLBACK_URL = os.getenv("AUTH0_CALLBACK_URL")
 AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE")
 
-# OAuth setup for Auth0
 oauth = OAuth()
 oauth.register(
     "auth0",
@@ -32,81 +36,85 @@ oauth.register(
     client_kwargs={"scope": "openid profile email"},
 )
 
-# Initialize database
+# ✅ Database Setup
 Base.metadata.create_all(bind=engine)
 
-# Dependency to get database session
 def get_db():
+    """Dependency to get the database session."""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-### 🔹 HOME ROUTE ###
-@app.get("/")
-def home():
-    return {"message": "MSP vCIO platform is running!"}
+# ✅ Pydantic Model for Clients
+class ClientCreate(BaseModel):
+    name: str
+    email: str
 
-### 🔹 AUTHENTICATION ROUTES ###
+class ClientResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+
+    class Config:
+        orm_mode = True
+
+# ✅ Auth0 Login Route
 @app.get("/login")
 async def login(request: Request):
     """Redirects the user to Auth0 for authentication."""
-    try:
-        return await oauth.auth0.authorize_redirect(request, AUTH0_CALLBACK_URL)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Auth0 login failed: {str(e)}")
+    return await oauth.auth0.authorize_redirect(request, AUTH0_CALLBACK_URL)
 
+# ✅ Auth0 Callback Route
 @app.get("/auth/callback")
 async def auth_callback(request: Request):
     """Handles Auth0 callback and extracts user information."""
-    try:
-        token = await oauth.auth0.authorize_access_token(request)
-        user = await oauth.auth0.parse_id_token(request, token)
+    token = await oauth.auth0.authorize_access_token(request)
+    user = await oauth.auth0.parse_id_token(request, token)
 
-        if not user:
-            raise HTTPException(status_code=400, detail="Authentication failed")
+    if not user:
+        raise HTTPException(status_code=400, detail="Authentication failed")
 
-        # Extract roles from Auth0 custom claims
-        roles = user.get("https://dev-y21yym5fgf78ufvb.us.auth0.com/roles", [])
-        
-        return {"user": user, "roles": roles}
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Auth0 callback error: {str(e)}")
+    return {"user": user}
 
-### 🔹 CLIENT MANAGEMENT ROUTES ###
-@app.post("/clients/")
-def create_client(name: str, email: str, db: Session = Depends(get_db)):
-    """Creates a new client record."""
-    new_client = Client(name=name, email=email)
-    db.add(new_client)
+# ✅ API Endpoints
+
+@app.get("/")
+def home():
+    return {"message": "Welcome to the MSP vCIO Platform API"}
+
+# ✅ Clients API
+@app.post("/clients/", response_model=ClientResponse)
+def create_client(client: ClientCreate, db: Session = Depends(get_db)):
+    """Create a new client."""
+    db_client = Client(name=client.name, email=client.email)
+    db.add(db_client)
     db.commit()
-    db.refresh(new_client)
-    return new_client
+    db.refresh(db_client)
+    return db_client
 
-@app.get("/clients/")
+@app.get("/clients/", response_model=List[ClientResponse])
 def get_clients(db: Session = Depends(get_db)):
-    """Retrieves all clients."""
+    """Retrieve all clients."""
     return db.query(Client).all()
 
-### 🔹 ROLE-BASED ACCESS CONTROL ROUTES ###
+# ✅ Admin API
 @app.get("/admin-data/")
-def admin_data(request: Request, allowed: bool = Depends(check_role(["MSP Admin"]))):
-    """Restricted data for MSP Admins."""
-    return {"message": "This is sensitive admin data"}
+def get_admin_data():
+    return {"message": "Admin data here"}
 
+# ✅ vCIO API
 @app.get("/vcio-data/")
-def vcio_data(request: Request, allowed: bool = Depends(check_role(["vCIO"]))):
-    """Restricted data for vCIOs."""
-    return {"message": "This is vCIO-specific data"}
+def get_vcio_data():
+    return {"message": "vCIO data here"}
 
+# ✅ vCISO API
 @app.get("/vciso-data/")
-def vciso_data(request: Request, allowed: bool = Depends(check_role(["vCISO"]))):
-    """Restricted data for vCISOs."""
-    return {"message": "This is vCISO-specific security data"}
+def get_vciso_data():
+    return {"message": "vCISO data here"}
 
+# ✅ Client API
 @app.get("/client-data/")
-def client_data(request: Request, allowed: bool = Depends(check_role(["Client"]))):
-    """Restricted data for clients."""
-    return {"message": "Client-specific data"}
+def get_client_data():
+    return {"message": "Client data here"}
